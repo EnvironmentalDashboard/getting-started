@@ -22,7 +22,7 @@ Environmental Dashboard is comprised of several web apps
 - Environmental Orb
 	- Node.js powered orb server, at environmentalorb.org
 
-This content is served from two servers, 159.89.232.129 (DigitalOcean server, referred to as nyc1 in haproxy configs) and 132.162.36.210 ("CSR" server, referred to as node in haproxy configs). The 159 address is the primary IP and the DigitalOcean server is used as both a web server and a load balancer, offloading some traffic to the CSR server (see [load balancing](#dns-and-load-balancing) for more information). Thus, instances of each web app need to be maintained on each server and static assets syned (which is not yet implemented).
+This content is served from two servers, 159.89.232.129 (DigitalOcean server, referred to as `nyc1`) and 132.162.36.210 (an Intel NUC mini PC sitting in the AJLC annex, referred to as `nuc`). nyc1 is the primary server, running a load balancer (HAProxy), a web server (Apache), and the database (MySQL). HAProxy will divide web traffic between nyc1 and nuc (meaning these machines must serve identical content). Currently, all database traffic is served by nyc1.
 
 ## Style guide
 php-cs-fixer
@@ -40,7 +40,7 @@ Symlinks are used extensively to create a more flexible file structure e.g. the 
 
 
 ## Local development
-Docker is important to understand as it is used to run some apps (e.g. the data collection daemons and community voices) in production and can be used to easily set up a development environment (though it's possible to use other tools such as MAMP). First, `cd` into your development environment (we will assume that is `~/repos`), download, and run the following Dockerfile:
+Most repositories have a run script which will build and run a docker container. For those that don't this global Dockerfile will work:
 ```
 FROM ubuntu:18.04
 ENV DEBIAN_FRONTEND=noninteractive
@@ -57,14 +57,14 @@ CMD /usr/sbin/apache2ctl -D FOREGROUND
 # docker build -t dev-server .
 # docker run -dit -p 80:80 -v $(pwd):/var/www/html/repos --name dev-server1 dev-server
 ```
-Cloning repositories into `~/repos` will make them available at `http://localhost/name-of-repo`. However, the orb-server and community voices apps have special Dockerfiles that need to be used to properly install them.
+Cloning repositories into `~/repos` will make them available at `http://localhost/name-of-repo`.
 
 
 ## DNS and load balancing
 When someone visits environmentaldashboard.org:
-1. DNS A records resolve to 159.89.232.129 IP address, user requests page from this IP (if you visit http://159.89.232.129:80 in your browser however it will not give you the website as apache has a virtual host configuration which looks at the Host: header i.e. the domain name to determine the correct config block to use.)
-2. If a user requests a page (from the 159 IP but using the domain name) over port 80, apache responds with a redirect to port 443 where HAProxy is listening. if you visit https://159.89.232.129:443 in your browser (ignore the ssl warning), this will hit up HAProxy directly without DNS resolution and perform the next step (3)
-3. HAProxy will choose to offload your request to either the DigitalOcean server (localhost in this case, the 159 address) or the CSR server (132.162.36.210). because HAProxy is running on 443, the DigitalOcean server handles ssl over 444. So, you’ll end up being served by either https://159.89.232.129:444 or https://132.162.36.210:443 which you should be able to pull up directly. Both these machines in addition to having apache running on 444/443, have community voices set up at port 3002/5297: http://159.89.232.129:3002 and http://132.162.36.210:5297.
+1. DNS A records resolve to 159.89.232.129 IP address, user requests page from this IP e.g. nyc1 (if you visit http://159.89.232.129:80 in your browser however it will not give you the website as apache has a virtual host configuration which looks at the Host: header i.e. the domain name to determine the correct config block to use.)
+2. If a user requests a page (from the 159 IP/nyc1 but using the domain name) over port 80, apache responds with a redirect to port 443 where HAProxy is listening. if you visit https://159.89.232.129:443 in your browser (ignore the ssl warning), this will hit up HAProxy directly without DNS resolution and perform the next step (3)
+3. HAProxy will choose to offload your request to either the DigitalOcean server (localhost in this case, the 159 address) or the nuc (132.162.36.210). Because HAProxy is running on 443, nyc1 handles ssl over 444. So, you’ll end up being served by either https://159.89.232.129:444 or https://132.162.36.210:443 which you should be able to pull up directly. Both these machines in addition to having apache running on 444/443, have community voices set up at port 3002/5297: http://159.89.232.129:3002 and http://132.162.36.210:5297.
 
 ## SSL
-Our SSL certificates are issued by Lets Encrypt and conveniently renewed by `certbot` on nyc1 and then distributed to nodes by [`scripts/sync_ssl.sh`](https://github.com/EnvironmentalDashboard/scripts), which is called by the certbot [webhook](https://github.com/EnvironmentalDashboard/et-cetera/blob/master/letsencrypt/cli.ini). See the [documentation](https://certbot.eff.org/docs/using.html#re-creating-and-updating-existing-certificates) for managing these certificates. `certbot certificates` will print a list of certificates. Updating existing certificates can be accomplished with the `--expand` option e.g. `certbot --expand -d environmentaldashboard.org -d www.environmentaldashboard.org -d api.environmentaldashboard.org -d phpmyadmin.environmentaldashboard.org`.
+Our SSL certificates are issued by Lets Encrypt and conveniently renewed by `certbot` on nyc1 and then distributed to nodes by [`scripts/sync_ssl.sh`](https://github.com/EnvironmentalDashboard/scripts), which is called by the certbot [webhook](https://github.com/EnvironmentalDashboard/et-cetera/blob/master/letsencrypt/cli.ini). See the [documentation](https://certbot.eff.org/docs/using.html#re-creating-and-updating-existing-certificates) for managing these certificates. `certbot certificates` will print a list of certificates. Updating existing certificates can be accomplished with the `--expand` option e.g. `certbot --expand -d environmentaldashboard.org -d www.environmentaldashboard.org -d api.environmentaldashboard.org -d phpmyadmin.environmentaldashboard.org -d oberlin.environmentaldashboard.org -d obp.environmentaldashboard.org -d cleveland.environmentaldashboard.org`.
